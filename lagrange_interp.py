@@ -1,15 +1,15 @@
 """
 Lagrange polynomial interpolation.
 
-Given n+1 nodes (t_0, f_0), ..., (t_n, f_n), the unique polynomial of
-degree <= n passing through all of them is
+Given n+1 nodes t_0, ..., t_n with values f(t_0), ..., f(t_n), the unique
+polynomial of degree <= n passing through all of them is
 
-    P(t) = sum_{k=0}^{n} f_k * L_k(t),
-    L_k(t) = prod_{i != k} (t - t_i) / (t_k - t_i).
+    P(t) = sum_{k=0}^{n} L_{n,k}(t) f(t_k),
+    L_{n,k}(t) = prod_{i=0, i != k}^{n} (t - t_i) / (t_k - t_i).
 
 A single high-degree polynomial through equally spaced nodes oscillates
-badly near the ends of the interval (Runge's phenomenon). Choosing nodes
-near the Chebyshev points clusters them toward the ends and reduces this.
+badly near the ends of the interval (Runge's phenomenon), so keeping MORE
+points can make the reconstruction WORSE.
 """
 
 import numpy as np
@@ -40,30 +40,15 @@ def lagrange_interpolate(t_nodes, f_nodes, t_eval):
     s_nodes = _to_unit_interval(t_nodes, a, b)
     s_eval = _to_unit_interval(t_eval, a, b)
 
-    n = len(s_nodes)
+    n = len(s_nodes) - 1                     # polynomial degree
     result = np.zeros_like(s_eval)
-    for k in range(n):
-        L_k = np.ones_like(s_eval)
-        for i in range(n):
+    for k in range(n + 1):
+        L_nk = np.ones_like(s_eval)          # basis function L_{n,k}(t)
+        for i in range(n + 1):
             if i != k:
-                L_k *= (s_eval - s_nodes[i]) / (s_nodes[k] - s_nodes[i])
-        result += f_nodes[k] * L_k
+                L_nk *= (s_eval - s_nodes[i]) / (s_nodes[k] - s_nodes[i])
+        result += L_nk * f_nodes[k]
     return result
-
-
-def chebyshev_indices(num_points, num_nodes):
-    """
-    Pick `num_nodes` indices out of range(num_points) that lie closest to the
-    Chebyshev points cos((2k+1)pi / (2n)), mapped onto [0, num_points-1].
-    The first and last points are always included so the whole stroke is covered.
-    """
-    n = num_nodes
-    k = np.arange(n)
-    cheb = np.cos((2 * k + 1) * np.pi / (2 * n))          # in (-1, 1)
-    positions = (cheb + 1) / 2 * (num_points - 1)          # in (0, N-1)
-    idx = np.unique(np.round(positions).astype(int))
-    idx = np.union1d(idx, [0, num_points - 1])
-    return idx
 
 
 def reconstruct_lagrange(t_nodes, x_nodes, y_nodes, t_eval):

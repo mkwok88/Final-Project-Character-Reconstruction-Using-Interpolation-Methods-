@@ -3,7 +3,7 @@ Subsampling a character and measuring reconstruction error.
 
 Procedure for one character:
   1. The full, densely sampled stroke is the ground truth.
-  2. Keep only some points (every k-th point, or Chebyshev-spaced points).
+  2. Keep only some points (every k-th point).
   3. Rebuild x(t) and y(t) from the kept points with an interpolation method.
   4. Measure the distance between the rebuilt curve and the TRUE points that
      were removed (held-out points).
@@ -16,7 +16,7 @@ means 5% of the character's size.
 import numpy as np
 
 from linear_interp import reconstruct_linear
-from lagrange_interp import reconstruct_lagrange, chebyshev_indices
+from lagrange_interp import reconstruct_lagrange
 from cubic_spline import reconstruct_spline
 
 METHODS = {
@@ -68,11 +68,6 @@ def reconstruction_error(char, kept_idx, method):
     }
 
 
-def kept_indices(num_points, k, spacing="uniform"):
-    """Choose which points to keep: 'uniform' (every k-th) or 'chebyshev'."""
-    uniform = every_kth_indices(num_points, k)
-    if spacing == "uniform":
-        return uniform
-    if spacing == "chebyshev":
-        return chebyshev_indices(num_points, len(uniform))
-    raise ValueError(f"unknown spacing: {spacing}")
+def kept_indices(num_points, k):
+    """Choose which points to keep: every k-th point plus the last point."""
+    return every_kth_indices(num_points, k)

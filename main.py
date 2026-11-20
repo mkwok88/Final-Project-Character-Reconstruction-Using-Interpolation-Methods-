@@ -28,19 +28,18 @@ FIG_DIR = "figures"
 
 
 def run_experiment(characters):
-    """Return a list of result rows (one per method/spacing/k)."""
+    """Return a list of result rows (one per method and k)."""
     rows = []
-    configs = [(m, "uniform") for m in METHODS] + [("Lagrange", "chebyshev")]
-    for method, spacing in configs:
+    for method in METHODS:
         for k in K_VALUES:
             rmse, maxe = [], []
             for ch in characters:
-                idx = kept_indices(len(ch["x"]), k, spacing)
+                idx = kept_indices(len(ch["x"]), k)
                 err = reconstruction_error(ch, idx, method)
                 rmse.append(err["rmse"])
                 maxe.append(err["max"])
             rows.append({
-                "method": method if spacing == "uniform" else f"{method} (Chebyshev nodes)",
+                "method": method,
                 "k": k,
                 "percent_kept": round(100.0 / k, 1),
                 "median_rmse": np.median(rmse),
@@ -60,7 +59,7 @@ def save_table(rows, path):
 
 def plot_error_vs_points(rows, path):
     fig, ax = plt.subplots(figsize=(6, 4))
-    for method in dict.fromkeys(r["method"] for r in rows):
+    for method in METHODS:
         sub = [r for r in rows if r["method"] == method]
         ax.plot([r["percent_kept"] for r in sub], [r["median_rmse"] for r in sub],
                 marker="o", label=method)
@@ -75,22 +74,27 @@ def plot_error_vs_points(rows, path):
     plt.close(fig)
 
 
+def _draw_reconstruction(ax, char, idx, x_rec, y_rec, title):
+    """Original stroke, reconstruction and kept points on one set of axes."""
+    ax.plot(char["x"], char["y"], color="0.7", lw=3, label="Original")
+    ax.plot(x_rec, y_rec, lw=1.5, label="Reconstruction")
+    ax.plot(char["x"][idx], char["y"][idx], "k.", ms=6, label="Kept points")
+    ax.set_title(title)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xticks([]); ax.set_yticks([])
+    # Lagrange can blow up far outside the letter; keep the view on the letter
+    pad = 0.3 * max(np.ptp(char["x"]), np.ptp(char["y"]))
+    ax.set_xlim(char["x"].min() - pad, char["x"].max() + pad)
+    ax.set_ylim(char["y"].min() - pad, char["y"].max() + pad)
+
+
 def plot_example(char, k, path):
     """Original character vs. the three reconstructions from the same points."""
-    idx = kept_indices(len(char["x"]), k, "uniform")
+    idx = kept_indices(len(char["x"]), k)
     fig, axes = plt.subplots(1, 3, figsize=(10, 3.6))
     for ax, method in zip(axes, METHODS):
         x_rec, y_rec = reconstruct(char, idx, method)
-        ax.plot(char["x"], char["y"], color="0.7", lw=3, label="Original")
-        ax.plot(x_rec, y_rec, lw=1.5, label="Reconstruction")
-        ax.plot(char["x"][idx], char["y"][idx], "k.", ms=6, label="Kept points")
-        ax.set_title(method)
-        ax.set_aspect("equal", adjustable="box")
-        ax.set_xticks([]); ax.set_yticks([])
-        # Lagrange can blow up far outside the letter; keep the view on the letter
-        pad = 0.3 * max(np.ptp(char["x"]), np.ptp(char["y"]))
-        ax.set_xlim(char["x"].min() - pad, char["x"].max() + pad)
-        ax.set_ylim(char["y"].min() - pad, char["y"].max() + pad)
+        _draw_reconstruction(ax, char, idx, x_rec, y_rec, method)
     axes[0].legend(loc="lower left", fontsize=7)
     fig.suptitle(f"Letter '{char['label']}', keeping every {k}th point ({100 // k}% of points)")
     fig.tight_layout()
@@ -98,23 +102,19 @@ def plot_example(char, k, path):
     plt.close(fig)
 
 
-def plot_runge(char, k, path):
-    """Lagrange with uniformly spaced vs. Chebyshev-spaced kept points."""
+def plot_runge(char, k_few, k_many, path):
+    """
+    Runge's phenomenon: Lagrange interpolation of the same letter with FEW
+    kept points (low degree) vs. MANY kept points (high degree).
+    """
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.8))
-    for ax, spacing in zip(axes, ["uniform", "chebyshev"]):
-        idx = kept_indices(len(char["x"]), k, spacing)
+    for ax, k in zip(axes, [k_few, k_many]):
+        idx = kept_indices(len(char["x"]), k)
         x_rec, y_rec = reconstruct(char, idx, "Lagrange")
-        ax.plot(char["x"], char["y"], color="0.7", lw=3, label="Original")
-        ax.plot(x_rec, y_rec, lw=1.5, label="Lagrange")
-        ax.plot(char["x"][idx], char["y"][idx], "k.", ms=6, label="Kept points")
-        ax.set_title("Uniform nodes" if spacing == "uniform" else "Chebyshev nodes")
-        ax.set_aspect("equal", adjustable="box")
-        ax.set_xticks([]); ax.set_yticks([])
-        pad = 0.3 * max(np.ptp(char["x"]), np.ptp(char["y"]))
-        ax.set_xlim(char["x"].min() - pad, char["x"].max() + pad)
-        ax.set_ylim(char["y"].min() - pad, char["y"].max() + pad)
+        title = f"{len(idx)} points (degree {len(idx) - 1})"
+        _draw_reconstruction(ax, char, idx, x_rec, y_rec, title)
     axes[0].legend(loc="lower left", fontsize=7)
-    fig.suptitle(f"Runge's phenomenon on letter '{char['label']}' ({len(idx)} nodes)")
+    fig.suptitle(f"Runge's phenomenon: Lagrange interpolation of letter '{char['label']}'")
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
@@ -139,13 +139,13 @@ def main():
     rows = run_experiment(characters)
     save_table(rows, "results.csv")
 
-    print(f"\n{'Method':34s} {'% kept':>7s} {'median RMSE':>12s}")
+    print(f"\n{'Method':20s} {'% kept':>7s} {'median RMSE':>12s}")
     for r in rows:
-        print(f"{r['method']:34s} {r['percent_kept']:7.1f} {r['median_rmse']:12.4g}")
+        print(f"{r['method']:20s} {r['percent_kept']:7.1f} {r['median_rmse']:12.4g}")
 
     plot_error_vs_points(rows, os.path.join(FIG_DIR, "error_vs_points.pdf"))
     plot_example(characters[0], 10, os.path.join(FIG_DIR, "example_reconstruction.pdf"))
-    plot_runge(characters[0], 10, os.path.join(FIG_DIR, "runge_phenomenon.pdf"))
+    plot_runge(characters[0], 20, 5, os.path.join(FIG_DIR, "runge_phenomenon.pdf"))
     print("\nSaved results.csv and figures/*.pdf")
 
 
